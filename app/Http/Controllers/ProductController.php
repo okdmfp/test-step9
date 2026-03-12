@@ -3,8 +3,12 @@
 namespace App\Http\Controllers;
 
 use App\Models\Product;
+use App\Http\Requests\StoreProductRequest; // フォームリクエストの読み込み
+use App\Http\Requests\UpdateProductRequest; // フォームリクエストの読み込み
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Facades\Log; // ログ用
+use Exception; // try-catch用
 
 class ProductController extends Controller
 {
@@ -54,32 +58,34 @@ class ProductController extends Controller
         return view('products.create');
     }
 
-    public function store(Request $request)
+    // ★修正箇所: StoreProductRequest を使用し、try-catchを追加
+    public function store(StoreProductRequest $request)
     {
-        $validated = $request->validate([
-            'product_name' => ['required', 'string', 'max:255'],
-            'price' => ['required', 'integer', 'min:0'],
-            'description' => ['nullable', 'string'],
-            'stock' => ['required', 'integer', 'min:0'],
-            'img_path' => ['nullable', 'image', 'max:2048'],
-        ]);
+        try {
+            // FormRequestでバリデーション済みのデータを取得
+            $validated = $request->validated();
 
-        $img_path = null;
-        if ($request->hasFile('img_path')) {
-            $img_path = $request->file('img_path')->store('products', 'public');
+            $img_path = null;
+            if ($request->hasFile('img_path')) {
+                $img_path = $request->file('img_path')->store('products', 'public');
+            }
+
+            Product::create([
+                'user_id' => auth()->id(),
+                'company_id' => auth()->user()->company_id,
+                'product_name' => $validated['product_name'],
+                'price' => $validated['price'],
+                'description' => $validated['description'],
+                'stock' => $validated['stock'],
+                'img_path' => $img_path,
+            ]);
+
+            return redirect()->route('mypage')->with('success', '商品を登録しました。');
+
+        } catch (Exception $e) {
+            Log::error('商品登録エラー: ' . $e->getMessage());
+            return back()->with('error', '商品の登録に失敗しました。')->withInput();
         }
-
-        Product::create([
-            'user_id' => auth()->id(),
-            'company_id' => auth()->user()->company_id,
-            'product_name' => $validated['product_name'],
-            'price' => $validated['price'],
-            'description' => $validated['description'],
-            'stock' => $validated['stock'],
-            'img_path' => $img_path,
-        ]);
-
-        return redirect()->route('mypage')->with('success', '商品を登録しました。');
     }
 
     public function showMyProduct(Product $product)
@@ -100,47 +106,53 @@ class ProductController extends Controller
         return view('products.edit', compact('product'));
     }
 
-    public function update(Request $request, Product $product)
+    // ★修正箇所: UpdateProductRequest を使用し、try-catchを追加
+    public function update(UpdateProductRequest $request, Product $product)
     {
-        if ($product->user_id !== auth()->id()) {
-            abort(403);
-        }
+        try {
+            // FormRequestのauthorizeで所有者チェックを行っている前提
+            $validated = $request->validated();
 
-        $validated = $request->validate([
-            'product_name' => ['required', 'string', 'max:255'],
-            'price' => ['required', 'integer', 'min:0'],
-            'description' => ['nullable', 'string'],
-            'stock' => ['required', 'integer', 'min:0'],
-            'img_path' => ['nullable', 'image', 'max:2048'],
-        ]);
-
-        if ($request->hasFile('img_path')) {
-            if ($product->img_path) {
-                Storage::disk('public')->delete($product->img_path);
+            if ($request->hasFile('img_path')) {
+                if ($product->img_path) {
+                    Storage::disk('public')->delete($product->img_path);
+                }
+                $validated['img_path'] = $request->file('img_path')->store('products', 'public');
             }
-            $validated['img_path'] = $request->file('img_path')->store('products', 'public');
+
+            $product->update($validated);
+
+            return redirect()->route('products.my.show', $product)->with('success', '商品を更新しました。');
+
+        } catch (Exception $e) {
+            Log::error('商品更新エラー: ' . $e->getMessage());
+            return back()->with('error', '商品の更新に失敗しました。')->withInput();
         }
-
-        $product->update($validated);
-
-        return redirect()->route('products.my.show', $product)->with('success', '商品を更新しました。');
     }
 
+    // ★修正箇所: try-catchを追加
     public function destroy(Product $product)
     {
         if ($product->user_id !== auth()->id()) {
             abort(403);
         }
 
-        if ($product->img_path) {
-            Storage::disk('public')->delete($product->img_path);
+        try {
+            if ($product->img_path) {
+                Storage::disk('public')->delete($product->img_path);
+            }
+
+            $product->delete();
+
+            return redirect()->route('mypage')->with('success', '商品を削除しました。');
+
+        } catch (Exception $e) {
+            Log::error('商品削除エラー: ' . $e->getMessage());
+            return back()->with('error', '商品の削除に失敗しました。');
         }
-
-        $product->delete();
-
-        return redirect()->route('mypage')->with('success', '商品を削除しました。');
     }
 
+    // ★購入処理にもtry-catchを追加（トランザクション制御も入れるとより安全です）
     public function purchase(Request $request, Product $product)
     {
         $validated = $request->validate([
@@ -151,13 +163,19 @@ class ProductController extends Controller
             return back()->with('error', '在庫が不足しています。');
         }
 
-        $product->decrement('stock', $validated['quantity']);
+        try {
+            $product->decrement('stock', $validated['quantity']);
 
-        $product->sales()->create([
-            'user_id' => auth()->id(),
-            'quantity' => $validated['quantity'],
-        ]);
+            $product->sales()->create([
+                'user_id' => auth()->id(),
+                'quantity' => $validated['quantity'],
+            ]);
 
-        return redirect()->route('products.show', $product)->with('success', '購入しました。');
+            return redirect()->route('products.show', $product)->with('success', '購入しました。');
+
+        } catch (Exception $e) {
+            Log::error('商品購入エラー: ' . $e->getMessage());
+            return back()->with('error', '商品の購入に失敗しました。');
+        }
     }
 }
