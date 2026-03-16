@@ -10,17 +10,19 @@
         
         <div>
             <label for="product_name">商品名</label>
-            <input id="product_name" type="text" name="product_name" value="{{ old('product_name', $product->product_name) }}" required>
+            <!-- required を削除 -->
+            <input id="product_name" type="text" name="product_name" value="{{ old('product_name', $product->product_name) }}">
             @error('product_name')
-                <span>{{ $message }}</span>
+                <span style="color: red;">{{ $message }}</span>
             @enderror
         </div>
         
         <div>
             <label for="price">価格</label>
-            <input id="price" type="number" name="price" value="{{ old('price', $product->price) }}" required>
+            <!-- required を削除 -->
+            <input id="price" type="number" name="price" value="{{ old('price', $product->price) }}">
             @error('price')
-                <span>{{ $message }}</span>
+                <span style="color: red;">{{ $message }}</span>
             @enderror
         </div>
         
@@ -28,15 +30,16 @@
             <label for="description">商品説明</label>
             <textarea id="description" name="description">{{ old('description', $product->description) }}</textarea>
             @error('description')
-                <span>{{ $message }}</span>
+                <span style="color: red;">{{ $message }}</span>
             @enderror
         </div>
         
         <div>
             <label for="stock">在庫数</label>
-            <input id="stock" type="number" name="stock" value="{{ old('stock', $product->stock) }}" required>
+            <!-- required を削除 -->
+            <input id="stock" type="number" name="stock" value="{{ old('stock', $product->stock) }}">
             @error('stock')
-                <span>{{ $message }}</span>
+                <span style="color: red;">{{ $message }}</span>
             @enderror
         </div>
         
@@ -47,7 +50,7 @@
             @endif
             <input id="img_path" type="file" name="img_path" accept="image/*">
             @error('img_path')
-                <span>{{ $message }}</span>
+                <span style="color: red;">{{ $message }}</span>
             @enderror
         </div>
         
